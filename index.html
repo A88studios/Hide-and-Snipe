@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Hide and Snipe — prototype</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif;
+    touch-action:none;user-select:none;-webkit-user-select:none}
+  canvas{display:block}
+  #scope{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .12s;
+    background:radial-gradient(circle at center, transparent 0 34vmin, #000 34.4vmin)}
+  #scope::before,#scope::after{content:"";position:absolute;left:50%;top:50%;background:#000;transform:translate(-50%,-50%)}
+  #scope::before{width:68vmin;height:1.5px}
+  #scope::after{width:1.5px;height:68vmin}
+  #dot{position:fixed;left:50%;top:50%;width:4px;height:4px;margin:-2px;border-radius:50%;background:#c00;opacity:0;pointer-events:none}
+  .btn{position:fixed;bottom:5vh;width:84px;height:84px;border-radius:50%;border:2px solid rgba(255,255,255,.7);
+    background:rgba(0,0,0,.35);color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
+  #fire{right:5vw;background:rgba(170,20,20,.55)}
+  #breath{left:5vw}
+  #hud{position:fixed;top:12px;left:0;right:0;text-align:center;color:#fff;text-shadow:0 1px 3px #000;font-size:15px;pointer-events:none}
+  #expo{position:fixed;top:40px;left:50%;width:160px;height:6px;margin-left:-80px;background:rgba(255,255,255,.25);border-radius:3px;pointer-events:none}
+  #expo i{display:block;height:100%;width:0;background:#f5a623;border-radius:3px}
+  #menu{position:fixed;inset:0;background:rgba(10,10,10,.82);color:#fff;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:24px;gap:14px}
+  #menu h1{margin:0;font-size:34px}
+  #menu button{font-size:20px;padding:14px 30px;border:0;border-radius:12px;background:#f5a623;color:#111;font-weight:700}
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="scope"></div><div id="dot"></div>
+<div id="hud">Find the sniper</div><div id="expo"><i></i></div>
+<div class="btn" id="breath">HOLD<br>BREATH</div>
+<div class="btn" id="fire">FIRE</div>
+<div id="flash"></div>
+<div id="menu">
+  <h1>Hide and Snipe</h1>
+  <div id="msg">Hold the phone up and aim by moving it.<br>Hold anywhere to scope in. Tap FIRE to shoot.<br>Hold BREATH to steady your aim.<br>Watch for a faint glint... and don't stay scoped too long.</div>
+  <button id="start">Start</button>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ---------- Scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbfd8ea);
+scene.fog = new THREE.Fog(0xd8c9a8, 120, 420);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1000);
+scene.add(new THREE.HemisphereLight(0xfff4e0, 0x8a6b45, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-60, 120, 40); scene.add(sun);
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// Desert valley: you sit on one ridge (z = +60), the enemy hides on the far slope.
+const height = (x, z) => 18 * (1 - Math.exp(-(((z + 20) / 60) ** 2))) + 1.5 * Math.sin(x * 0.07) * Math.cos(z * 0.05) + 0.6 * Math.sin(x * 0.23 + z * 0.17);
+const groundGeo = new THREE.PlaneGeometry(500, 500, 160, 160); groundGeo.rotateX(-Math.PI / 2);
+const gp = groundGeo.attributes.position, cols = [];
+for (let i = 0; i < gp.count; i++) {
+  const x = gp.getX(i), z = gp.getZ(i); gp.setY(i, height(x, z));
+  const t = 0.85 + 0.15 * Math.sin(x * 0.3) * Math.cos(z * 0.27); cols.push(0.84 * t, 0.70 * t, 0.48 * t);
+}
+groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); groundGeo.computeVertexNormals();
+const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+scene.add(ground);
+
+// ---------- Props ----------
+const CACTUS = 0x4f7a3a, ENEMY_CACTUS = 0x5a7d3c; // enemy suit is *slightly* off — the tell
+const lam = c => new THREE.MeshLambertMaterial({ color: c });
+function makeCactus(color) {
+  const g = new THREE.Group(), m = lam(color);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 4, 10), m); trunk.position.y = 2; g.add(trunk);
+  const top = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), m); top.position.y = 4; g.add(top);
+  [[-1, 2.2], [1, 1.6]].forEach(([s, y]) => {
+    const a = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1, 8), m); a.rotation.z = Math.PI / 2; a.position.set(s * 0.8, y, 0); g.add(a);
+    const u = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.4, 8), m); u.position.set(s * 1.3, y + 0.7, 0); g.add(u);
+  });
+  return g;
+}
+const makeRock = () => { const r = new THREE.Mesh(new THREE.DodecahedronGeometry(1 + Math.random() * 1.8, 0), lam(0xa88c68));
+  r.rotation.set(Math.random() * 3, Math.random() * 3, 0); r.scale.y = 0.6; return r; };
+const makeBush = () => { const b = new THREE.Mesh(new THREE.SphereGeometry(1 + Math.random() * 0.8, 8, 6), lam(0x7d8a4a)); b.scale.y = 0.6; return b; };
+
+const props = new THREE.Group(); scene.add(props);
+const spots = [];
+function placeOnSlope(obj, x, z) { obj.position.set(x, height(x, z) - 0.2, z); obj.rotation.y = Math.random() * 6.28; props.add(obj); }
+for (let k = 0; k < 130; k++) {
+  const x = -110 + Math.random() * 220, z = -150 + Math.random() * 80;
+  const r = Math.random(), o = r < 0.45 ? makeCactus(CACTUS) : r < 0.75 ? makeRock() : makeBush();
+  placeOnSlope(o, x, z); spots.push([x, z]);
+}
+
+// ---------- Enemy sniper (disguised as a cactus) ----------
+const enemy = makeCactus(ENEMY_CACTUS);
+const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.6, 6), lam(0x2a2a2a));
+barrel.rotation.x = Math.PI / 2; barrel.position.set(0.25, 2.6, 0.9); enemy.add(barrel);
+const glintTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,250,220,.6)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+const glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: glintTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+glint.position.set(0.25, 2.75, 1.4); glint.scale.setScalar(1.2); enemy.add(glint);
+scene.add(enemy);
+
+const PLAYER = new THREE.Vector3(0, height(0, 60) + 1.6, 60);
+camera.position.copy(PLAYER);
+
+// ---------- Aiming (gyro, with mouse fallback for laptops) ----------
+const yawOffset = new THREE.Quaternion(), devQ = new THREE.Quaternion(), tmpQ = new THREE.Quaternion();
+const euler = new THREE.Euler(), zee = new THREE.Vector3(0, 0, 1), q1 = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+let gyro = null, calibrate = true, mouse = { x: 0.5, y: 0.5 };
+addEventListener('deviceorientation', e => { if (e.alpha != null) gyro = e; });
+addEventListener('mousemove', e => { mouse.x = e.clientX / innerWidth; mouse.y = e.clientY / innerHeight; });
+function deviceQuat(e) {
+  const d = THREE.MathUtils.DEG2RAD, orient = (screen.orientation ? screen.orientation.angle : window.orientation || 0) * d;
+  euler.set(e.beta * d, e.alpha * d, -e.gamma * d, 'YXZ');
+  devQ.setFromEuler(euler).multiply(q1).multiply(tmpQ.setFromAxisAngle(zee, -orient));
+  return devQ;
+}
+const look = new THREE.Quaternion(), sway = new THREE.Euler();
+function aim(t, zoom, steady) {
+  if (gyro) {
+    const q = deviceQuat(gyro);
+    if (calibrate) {              // whichever way you face at start = looking across the valley
+      const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+      yawOffset.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -e.y); calibrate = false;
+    }
+    look.copy(yawOffset).multiply(q);
+  } else {
+    look.setFromEuler(new THREE.Euler(-(mouse.y - 0.5) * 0.8, -(mouse.x - 0.5) * 1.6, 0, 'YXZ'));
+  }
+  // Hand sway: barely noticeable zoomed out, big through the scope, calmer while holding breath
+  const amp = (0.0008 + 0.006 * zoom) * (steady ? 0.15 : 1);
+  sway.set(amp * Math.sin(t * 1.3) + amp * 0.5 * Math.sin(t * 3.7), amp * Math.cos(t * 1.1) + amp * 0.4 * Math.sin(t * 2.9), 0);
+  camera.quaternion.copy(look).multiply(tmpQ.setFromEuler(sway));
+}
+
+// ---------- Input ----------
+let scopeTouch = null, scoped = false, breath = false, breathLeft = 3, playing = false;
+const isBtn = el => el && el.closest && el.closest('.btn');
+addEventListener('pointerdown', e => {
+  if (!playing) return;
+  if (isBtn(e.target)) return;
+  if (scopeTouch === null) { scopeTouch = e.pointerId; scoped = true; }
+});
+addEventListener('pointerup', e => { if (e.pointerId === scopeTouch) { scopeTouch = null; scoped = false; } });
+addEventListener('pointercancel', e => { if (e.pointerId === scopeTouch) { scopeTouch = null; scoped = false; } });
+const breathBtn = document.getElementById('breath');
+breathBtn.addEventListener('pointerdown', () => breath = true);
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => breathBtn.addEventListener(ev, () => breath = false));
+document.getElementById('fire').addEventListener('pointerdown', () => playing && fire());
+addEventListener('keydown', e => { if (e.code === 'Space') fire(); if (e.key === 'Shift') breath = true; });
+addEventListener('keyup', e => { if (e.key === 'Shift') breath = false; });
+
+// ---------- Shooting ----------
+const ray = new THREE.Raycaster(), dust = [];
+function fire() {
+  if (!playing) return;
+  flashScreen(0.25);
+  ray.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const hits = ray.intersectObjects([enemy, props, ground], true);
+  if (!hits.length) { detect += 15; return; }
+  let o = hits[0].object, isEnemy = false; while (o) { if (o === enemy) isEnemy = true; o = o.parent; }
+  if (isEnemy) return win();
+  detect += 30;                                  // a miss gives away your position
+  const p = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), new THREE.MeshBasicMaterial({ color: 0xd9c49a, transparent: true, opacity: 0.9 }));
+  p.position.copy(hits[0].point); scene.add(p); dust.push(p);
+  hud.textContent = 'Missed! They heard that...';
+}
+
+// ---------- Rounds ----------
+const hud = document.getElementById('hud'), expoBar = document.querySelector('#expo i');
+const menu = document.getElementById('menu'), msg = document.getElementById('msg'), startBtn = document.getElementById('start');
+let detect = 0, nextGlint = 3, glintT = 0, falling = 0;
+function newRound() {
+  const [x, z] = spots[Math.floor(Math.random() * spots.length)];
+  const ex = x + (Math.random() - 0.5) * 6, ez = z + (Math.random() - 0.5) * 6;
+  enemy.position.set(ex, height(ex, ez) - 0.2, ez);
+  enemy.lookAt(PLAYER.x, enemy.position.y, PLAYER.z); enemy.rotation.z = 0;
+  detect = 0; falling = 0; nextGlint = 2 + Math.random() * 3; calibrate = true;
+  dust.forEach(d => scene.remove(d)); dust.length = 0;
+  hud.textContent = 'Find the sniper'; playing = true; menu.style.display = 'none';
+}
+function endRound(title, text) { playing = false; scoped = false; scopeTouch = null;
+  msg.innerHTML = `<b style="font-size:26px">${title}</b><br>${text}`; startBtn.textContent = 'Play again'; menu.style.display = 'flex'; }
+function win() { falling = 0.001; playing = false; hud.textContent = 'Sniped!'; setTimeout(() => endRound('You got them!', 'Nice shot.'), 1400); }
+function lose() { flashScreen(0.9); endRound('Sniped!', 'They found you first. Stay scoped in for less time.'); }
+function flashScreen(a) { const f = document.getElementById('flash'); f.style.transition = 'none'; f.style.opacity = a;
+  requestAnimationFrame(() => { f.style.transition = 'opacity .5s'; f.style.opacity = 0; }); }
+
+startBtn.addEventListener('click', async () => {
+  if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
+    try { await DeviceOrientationEvent.requestPermission(); } catch (e) {}
+  }
+  newRound();
+});
+
+// ---------- Loop ----------
+const scopeEl = document.getElementById('scope'), dotEl = document.getElementById('dot');
+let zoom = 0, last = performance.now();
+renderer.setAnimationLoop(now => {
+  const dt = Math.min((now - last) / 1000, 0.05); last = now; const t = now / 1000;
+
+  zoom += ((scoped ? 1 : 0) - zoom) * Math.min(1, dt * 10);
+  camera.fov = THREE.MathUtils.lerp(60, 5, zoom); camera.updateProjectionMatrix();
+  scopeEl.style.opacity = dotEl.style.opacity = zoom > 0.5 ? 1 : 0;
+
+  if (breath && breathLeft > 0) breathLeft -= dt; else if (!breath) breathLeft = Math.min(3, breathLeft + dt * 0.8);
+  aim(t, zoom, breath && breathLeft > 0);
+
+  if (playing) {
+    detect += dt * (2 + (scoped ? 9 : 0));
+    expoBar.style.width = Math.min(100, detect) + '%';
+    if (detect >= 100) lose();
+
+    nextGlint -= dt;
+    if (nextGlint <= 0) { glintT = 0.35; nextGlint = 3 + Math.random() * 4; }
+    if (glintT > 0) {
+      glintT -= dt;
+      const flicker = (Math.sin(t * 60) * 0.5 + 0.5);
+      glint.material.opacity = flicker * THREE.MathUtils.lerp(0.18, 0.9, zoom);
+    } else glint.material.opacity = 0;
+  }
+
+  if (falling > 0 && falling < 1) { falling = Math.min(1, falling + dt * 1.5); enemy.rotation.z = -falling * Math.PI / 2; glint.material.opacity = 0; }
+  dust.forEach(d => { d.scale.multiplyScalar(1 + dt * 1.5); d.material.opacity -= dt * 0.8; });
+
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
