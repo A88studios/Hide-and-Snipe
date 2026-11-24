@@ -1,236 +1,126 @@
 <!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Hide and Snipe — prototype</title>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Hide and Snipe</title>
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif;
-    touch-action:none;user-select:none;-webkit-user-select:none}
-  canvas{display:block}
-  #scope{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .12s;
-    background:radial-gradient(circle at center, transparent 0 34vmin, #000 34.4vmin)}
-  #scope::before,#scope::after{content:"";position:absolute;left:50%;top:50%;background:#000;transform:translate(-50%,-50%)}
-  #scope::before{width:68vmin;height:1.5px}
-  #scope::after{width:1.5px;height:68vmin}
-  #dot{position:fixed;left:50%;top:50%;width:4px;height:4px;margin:-2px;border-radius:50%;background:#c00;opacity:0;pointer-events:none}
-  .btn{position:fixed;bottom:5vh;width:84px;height:84px;border-radius:50%;border:2px solid rgba(255,255,255,.7);
-    background:rgba(0,0,0,.35);color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
-  #fire{right:5vw;background:rgba(170,20,20,.55)}
-  #breath{left:5vw}
-  #hud{position:fixed;top:12px;left:0;right:0;text-align:center;color:#fff;text-shadow:0 1px 3px #000;font-size:15px;pointer-events:none}
-  #expo{position:fixed;top:40px;left:50%;width:160px;height:6px;margin-left:-80px;background:rgba(255,255,255,.25);border-radius:3px;pointer-events:none}
-  #expo i{display:block;height:100%;width:0;background:#f5a623;border-radius:3px}
-  #menu{position:fixed;inset:0;background:rgba(10,10,10,.82);color:#fff;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;text-align:center;padding:24px;gap:14px}
-  #menu h1{margin:0;font-size:34px}
-  #menu button{font-size:20px;padding:14px 30px;border:0;border-radius:12px;background:#f5a623;color:#111;font-weight:700}
-  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none}
-</style>
-</head>
-<body>
-<div id="scope"></div><div id="dot"></div>
-<div id="hud">Find the sniper</div><div id="expo"><i></i></div>
-<div class="btn" id="breath">HOLD<br>BREATH</div>
-<div class="btn" id="fire">FIRE</div>
-<div id="flash"></div>
-<div id="menu">
-  <h1>Hide and Snipe</h1>
-  <div id="msg">Hold the phone up and aim by moving it.<br>Hold anywhere to scope in. Tap FIRE to shoot.<br>Hold BREATH to steady your aim.<br>Watch for a faint glint... and don't stay scoped too long.</div>
-  <button id="start">Start</button>
-</div>
-
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
-<script type="module">
-import * as THREE from 'three';
-
-// ---------- Scene ----------
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
-document.body.prepend(renderer.domElement);
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xbfd8ea);
-scene.fog = new THREE.Fog(0xd8c9a8, 120, 420);
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1000);
-scene.add(new THREE.HemisphereLight(0xfff4e0, 0x8a6b45, 1.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-60, 120, 40); scene.add(sun);
-addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-
-// Desert valley: you sit on one ridge (z = +60), the enemy hides on the far slope.
-const height = (x, z) => 18 * (1 - Math.exp(-(((z + 20) / 60) ** 2))) + 1.5 * Math.sin(x * 0.07) * Math.cos(z * 0.05) + 0.6 * Math.sin(x * 0.23 + z * 0.17);
-const groundGeo = new THREE.PlaneGeometry(500, 500, 160, 160); groundGeo.rotateX(-Math.PI / 2);
-const gp = groundGeo.attributes.position, cols = [];
-for (let i = 0; i < gp.count; i++) {
-  const x = gp.getX(i), z = gp.getZ(i); gp.setY(i, height(x, z));
-  const t = 0.85 + 0.15 * Math.sin(x * 0.3) * Math.cos(z * 0.27); cols.push(0.84 * t, 0.70 * t, 0.48 * t);
+html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{display:block;width:100vw;height:100vh}
+.btn{position:fixed;bottom:24px;width:88px;height:88px;border-radius:50%;border:3px solid rgba(255,255,255,.75);color:#fff;font-weight:700;font-size:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:3}
+#zoomBtn{left:24px}#fireBtn{right:24px;background:rgba(200,40,30,.55)}
+#zoomBtn small{font-size:10px;opacity:.8;font-weight:400}
+#hud{position:fixed;top:10px;left:50%;transform:translateX(-50%);width:36%;height:10px;border:2px solid #fff;border-radius:6px;overflow:hidden;z-index:3}
+#bar{height:100%;width:0;background:linear-gradient(90deg,#fc0,#f30)}
+#zl{position:fixed;top:28px;left:50%;transform:translateX(-50%);color:#fff;font-size:12px;opacity:.85;z-index:3}
+.ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.75);color:#fff;text-align:center;z-index:5;padding:20px}
+.ov h1{margin:0 0 8px}.ov p{max-width:520px}
+.ov button{font-size:20px;padding:12px 30px;border:0;border-radius:10px;background:#f80;color:#fff;font-weight:700}
+#rot{display:none;z-index:9}
+@media (orientation:portrait){#rot{display:flex}}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="hud"><div id="bar"></div></div><div id="zl">1x</div>
+<div class="btn" id="zoomBtn">ZOOM<small>tap / swipe ↑↓</small></div>
+<div class="btn" id="fireBtn">FIRE</div>
+<div class="ov" id="menu"><h1>Hide and Snipe</h1>
+<p id="msg">A sniper in camo is hiding behind one of the cacti, popping out now and then.<br>Hold your phone sideways. Move it to aim. Left thumb zooms (tap or swipe up to zoom in, swipe down to zoom out). Right thumb fires.</p>
+<button id="start">Start</button></div>
+<div class="ov" id="rot"><h1>↻</h1><p>Turn your phone sideways</p></div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W,H,DPR;function rs(){DPR=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR}
+addEventListener('resize',rs);rs();
+const WW=3200,WH=1100,HZ=430,ZOOMS=[1,2.5,5];
+let seed=1;function rnd(){seed=(seed*16807)%2147483647;return seed/2147483647}
+function groundY(x){return HZ+60+40*Math.sin(x/400)+25*Math.sin(x/170+1)}
+let props=[],enemy={},cx=WW/2,cy=650,tx=cx,ty=cy,zoom=1,zi=0,exp=0,playing=false,flash=0;
+function build(){
+ seed=Math.floor(Math.random()*1e6)+1;props=[];
+ for(let i=0;i<75;i++){let x=rnd()*WW,gy=groundY(x),y=gy+20+rnd()*(WH-gy-140),d=(y-HZ)/(WH-HZ),t=rnd();
+  props.push({x,y,s:.45+d*1.1,type:t<.45?'cactus':t<.75?'rock':'bush',v:rnd()})}
+ props.sort((a,b)=>a.y-b.y);
+ const cs=props.filter(p=>p.type=='cactus'&&p.x>400&&p.x<WW-400);
+ enemy={c:cs[Math.floor(Math.random()*cs.length)],side:Math.random()<.5?-1:1,peek:0,target:0,t:2,glint:0,gt:3,down:false,fall:0};
 }
-groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); groundGeo.computeVertexNormals();
-const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ vertexColors: true }));
-scene.add(ground);
-
-// ---------- Props ----------
-const CACTUS = 0x4f7a3a, ENEMY_CACTUS = 0x5a7d3c; // enemy suit is *slightly* off — the tell
-const lam = c => new THREE.MeshLambertMaterial({ color: c });
-function makeCactus(color) {
-  const g = new THREE.Group(), m = lam(color);
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 4, 10), m); trunk.position.y = 2; g.add(trunk);
-  const top = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), m); top.position.y = 4; g.add(top);
-  [[-1, 2.2], [1, 1.6]].forEach(([s, y]) => {
-    const a = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1, 8), m); a.rotation.z = Math.PI / 2; a.position.set(s * 0.8, y, 0); g.add(a);
-    const u = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.4, 8), m); u.position.set(s * 1.3, y + 0.7, 0); g.add(u);
-  });
-  return g;
+function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+function drawProp(p){const s=p.s,x=p.x,y=p.y;
+ if(p.type=='cactus'){ctx.fillStyle=`hsl(${95+p.v*20},35%,${30+p.v*8}%)`;
+  rr(x-6*s,y-70*s,12*s,70*s,6*s);
+  rr(x-19*s,y-40*s,15*s,6*s,3*s);rr(x-19*s,y-58*s,6*s,24*s,3*s);
+  if(p.v>.3){rr(x+4*s,y-48*s,15*s,6*s,3*s);rr(x+13*s,y-64*s,6*s,22*s,3*s)}}
+ else if(p.type=='rock'){ctx.fillStyle=`hsl(30,15%,${45+p.v*15}%)`;ctx.beginPath();ctx.ellipse(x,y-8*s,(14+p.v*10)*s,(9+p.v*5)*s,0,0,7);ctx.fill()}
+ else{ctx.fillStyle=`hsl(${70+p.v*20},25%,38%)`;for(let k=0;k<4;k++){ctx.beginPath();ctx.arc(x+(k-1.5)*7*s,y-7*s-(k%2)*4*s,8*s,0,7);ctx.fill()}}
 }
-const makeRock = () => { const r = new THREE.Mesh(new THREE.DodecahedronGeometry(1 + Math.random() * 1.8, 0), lam(0xa88c68));
-  r.rotation.set(Math.random() * 3, Math.random() * 3, 0); r.scale.y = 0.6; return r; };
-const makeBush = () => { const b = new THREE.Mesh(new THREE.SphereGeometry(1 + Math.random() * 0.8, 8, 6), lam(0x7d8a4a)); b.scale.y = 0.6; return b; };
-
-const props = new THREE.Group(); scene.add(props);
-const spots = [];
-function placeOnSlope(obj, x, z) { obj.position.set(x, height(x, z) - 0.2, z); obj.rotation.y = Math.random() * 6.28; props.add(obj); }
-for (let k = 0; k < 130; k++) {
-  const x = -110 + Math.random() * 220, z = -150 + Math.random() * 80;
-  const r = Math.random(), o = r < 0.45 ? makeCactus(CACTUS) : r < 0.75 ? makeRock() : makeBush();
-  placeOnSlope(o, x, z); spots.push([x, z]);
+function soldierPos(){const c=enemy.c,s=c.s,lean=(3+11*enemy.peek)*s;return{s,hx:c.x+enemy.side*lean,base:c.y}}
+function drawEnemy(){const {s,hx,base}=soldierPos(),sd=enemy.side;
+ ctx.save();ctx.translate(hx,base);ctx.rotate(sd*enemy.fall);
+ ctx.fillStyle='#7c7f4a';rr(-6*s,-26*s,12*s,22*s,4*s);
+ ctx.fillStyle='#5f6638';ctx.beginPath();ctx.arc(-2*s,-20*s,3*s,0,7);ctx.arc(3*s,-12*s,2.5*s,0,7);ctx.fill();
+ ctx.fillStyle='#8a8a55';ctx.beginPath();ctx.arc(0,-31*s,5*s,0,7);ctx.fill();
+ ctx.fillStyle='#5f6638';ctx.beginPath();ctx.arc(0,-33*s,5.4*s,Math.PI,0);ctx.fill();
+ ctx.strokeStyle='#3a3a2a';ctx.lineWidth=2*s;ctx.beginPath();ctx.moveTo(sd*2*s,-25*s);ctx.lineTo(sd*(2+16*enemy.peek)*s,-25*s);ctx.stroke();
+ if(enemy.glint>0&&enemy.peek>.6&&!enemy.down){const a=.12+.65*Math.min(1,(zoom-1)/4);
+  const g=ctx.createRadialGradient(sd*8*s,-28*s,0,sd*8*s,-28*s,3.5*s);g.addColorStop(0,`rgba(255,255,240,${a})`);g.addColorStop(1,'rgba(255,255,240,0)');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(sd*8*s,-28*s,3.5*s,0,7);ctx.fill()}
+ ctx.restore()}
+function hitTest(px,py){if(enemy.down)return false;const {s,hx,base}=soldierPos(),c=enemy.c;
+ if(Math.abs(px-c.x)<6*s&&py>base-70*s)return false;
+ const head=Math.hypot(px-hx,py-(base-31*s))<5.5*s,body=Math.abs(px-hx)<6*s&&py>base-26*s&&py<base-4*s;return head||body}
+function draw(){
+ ctx.setTransform(DPR*zoom,0,0,DPR*zoom,DPR*(W/2-cx*zoom),DPR*(H/2-cy*zoom));
+ let g=ctx.createLinearGradient(0,-400,0,HZ);g.addColorStop(0,'#5d9bd6');g.addColorStop(1,'#f3d9a8');ctx.fillStyle=g;ctx.fillRect(-800,-800,WW+1600,HZ+800);
+ ctx.fillStyle='#b98e6a';ctx.beginPath();ctx.moveTo(-800,HZ);for(let x=-800;x<=WW+800;x+=60)ctx.lineTo(x,HZ-60-50*Math.abs(Math.sin(x/310))-30*Math.sin(x/130));ctx.lineTo(WW+800,HZ);ctx.fill();
+ ctx.fillStyle='#d9b57e';ctx.fillRect(-800,HZ,WW+1600,WH+800);
+ ctx.fillStyle='#caa26b';ctx.beginPath();ctx.moveTo(-800,WH+800);for(let x=-800;x<=WW+800;x+=40)ctx.lineTo(x,groundY(x));ctx.lineTo(WW+800,WH+800);ctx.fill();
+ for(const p of props){if(p===enemy.c)drawEnemy();drawProp(p)}
+ ctx.setTransform(DPR,0,0,DPR,0,0);
+ const a=Math.min(1,Math.max(0,(zoom-1.1)/1.2));
+ if(a>0){const r=Math.min(W,H)*.46;ctx.fillStyle=`rgba(0,0,0,${.5*a})`;ctx.beginPath();ctx.rect(0,0,W,H);ctx.arc(W/2,H/2,r,0,7,true);ctx.fill('evenodd');
+  ctx.strokeStyle=`rgba(0,0,0,${.8*a})`;ctx.lineWidth=4;ctx.beginPath();ctx.arc(W/2,H/2,r,0,7);ctx.stroke()}
+ ctx.strokeStyle='rgba(0,0,0,.8)';ctx.lineWidth=1.5;const L=a>0?Math.min(W,H)*.44:14;
+ ctx.beginPath();ctx.moveTo(W/2-L,H/2);ctx.lineTo(W/2-4,H/2);ctx.moveTo(W/2+4,H/2);ctx.lineTo(W/2+L,H/2);ctx.moveTo(W/2,H/2-L);ctx.lineTo(W/2,H/2-4);ctx.moveTo(W/2,H/2+4);ctx.lineTo(W/2,H/2+L);ctx.stroke();
+ ctx.fillStyle='rgba(255,0,0,.8)';ctx.beginPath();ctx.arc(W/2,H/2,1.5,0,7);ctx.fill();
+ if(flash>0){ctx.fillStyle=`rgba(255,240,200,${flash*2})`;ctx.fillRect(0,0,W,H)}
 }
-
-// ---------- Enemy sniper (disguised as a cactus) ----------
-const enemy = makeCactus(ENEMY_CACTUS);
-const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.6, 6), lam(0x2a2a2a));
-barrel.rotation.x = Math.PI / 2; barrel.position.set(0.25, 2.6, 0.9); enemy.add(barrel);
-const glintTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
-  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,250,220,.6)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-  x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
-const glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: glintTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-glint.position.set(0.25, 2.75, 1.4); glint.scale.setScalar(1.2); enemy.add(glint);
-scene.add(enemy);
-
-const PLAYER = new THREE.Vector3(0, height(0, 60) + 1.6, 60);
-camera.position.copy(PLAYER);
-
-// ---------- Aiming (gyro, with mouse fallback for laptops) ----------
-const yawOffset = new THREE.Quaternion(), devQ = new THREE.Quaternion(), tmpQ = new THREE.Quaternion();
-const euler = new THREE.Euler(), zee = new THREE.Vector3(0, 0, 1), q1 = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
-let gyro = null, calibrate = true, mouse = { x: 0.5, y: 0.5 };
-addEventListener('deviceorientation', e => { if (e.alpha != null) gyro = e; });
-addEventListener('mousemove', e => { mouse.x = e.clientX / innerWidth; mouse.y = e.clientY / innerHeight; });
-function deviceQuat(e) {
-  const d = THREE.MathUtils.DEG2RAD, orient = (screen.orientation ? screen.orientation.angle : window.orientation || 0) * d;
-  euler.set(e.beta * d, e.alpha * d, -e.gamma * d, 'YXZ');
-  devQ.setFromEuler(euler).multiply(q1).multiply(tmpQ.setFromAxisAngle(zee, -orient));
-  return devQ;
-}
-const look = new THREE.Quaternion(), sway = new THREE.Euler();
-function aim(t, zoom, steady) {
-  if (gyro) {
-    const q = deviceQuat(gyro);
-    if (calibrate) {              // whichever way you face at start = looking across the valley
-      const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
-      yawOffset.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -e.y); calibrate = false;
-    }
-    look.copy(yawOffset).multiply(q);
-  } else {
-    look.setFromEuler(new THREE.Euler(-(mouse.y - 0.5) * 0.8, -(mouse.x - 0.5) * 1.6, 0, 'YXZ'));
-  }
-  // Hand sway: barely noticeable zoomed out, big through the scope, calmer while holding breath
-  const amp = (0.0008 + 0.006 * zoom) * (steady ? 0.15 : 1);
-  sway.set(amp * Math.sin(t * 1.3) + amp * 0.5 * Math.sin(t * 3.7), amp * Math.cos(t * 1.1) + amp * 0.4 * Math.sin(t * 2.9), 0);
-  camera.quaternion.copy(look).multiply(tmpQ.setFromEuler(sway));
-}
-
-// ---------- Input ----------
-let scopeTouch = null, scoped = false, breath = false, breathLeft = 3, playing = false;
-const isBtn = el => el && el.closest && el.closest('.btn');
-addEventListener('pointerdown', e => {
-  if (!playing) return;
-  if (isBtn(e.target)) return;
-  if (scopeTouch === null) { scopeTouch = e.pointerId; scoped = true; }
-});
-addEventListener('pointerup', e => { if (e.pointerId === scopeTouch) { scopeTouch = null; scoped = false; } });
-addEventListener('pointercancel', e => { if (e.pointerId === scopeTouch) { scopeTouch = null; scoped = false; } });
-const breathBtn = document.getElementById('breath');
-breathBtn.addEventListener('pointerdown', () => breath = true);
-['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => breathBtn.addEventListener(ev, () => breath = false));
-document.getElementById('fire').addEventListener('pointerdown', () => playing && fire());
-addEventListener('keydown', e => { if (e.code === 'Space') fire(); if (e.key === 'Shift') breath = true; });
-addEventListener('keyup', e => { if (e.key === 'Shift') breath = false; });
-
-// ---------- Shooting ----------
-const ray = new THREE.Raycaster(), dust = [];
-function fire() {
-  if (!playing) return;
-  flashScreen(0.25);
-  ray.setFromCamera(new THREE.Vector2(0, 0), camera);
-  const hits = ray.intersectObjects([enemy, props, ground], true);
-  if (!hits.length) { detect += 15; return; }
-  let o = hits[0].object, isEnemy = false; while (o) { if (o === enemy) isEnemy = true; o = o.parent; }
-  if (isEnemy) return win();
-  detect += 30;                                  // a miss gives away your position
-  const p = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), new THREE.MeshBasicMaterial({ color: 0xd9c49a, transparent: true, opacity: 0.9 }));
-  p.position.copy(hits[0].point); scene.add(p); dust.push(p);
-  hud.textContent = 'Missed! They heard that...';
-}
-
-// ---------- Rounds ----------
-const hud = document.getElementById('hud'), expoBar = document.querySelector('#expo i');
-const menu = document.getElementById('menu'), msg = document.getElementById('msg'), startBtn = document.getElementById('start');
-let detect = 0, nextGlint = 3, glintT = 0, falling = 0;
-function newRound() {
-  const [x, z] = spots[Math.floor(Math.random() * spots.length)];
-  const ex = x + (Math.random() - 0.5) * 6, ez = z + (Math.random() - 0.5) * 6;
-  enemy.position.set(ex, height(ex, ez) - 0.2, ez);
-  enemy.lookAt(PLAYER.x, enemy.position.y, PLAYER.z); enemy.rotation.z = 0;
-  detect = 0; falling = 0; nextGlint = 2 + Math.random() * 3; calibrate = true;
-  dust.forEach(d => scene.remove(d)); dust.length = 0;
-  hud.textContent = 'Find the sniper'; playing = true; menu.style.display = 'none';
-}
-function endRound(title, text) { playing = false; scoped = false; scopeTouch = null;
-  msg.innerHTML = `<b style="font-size:26px">${title}</b><br>${text}`; startBtn.textContent = 'Play again'; menu.style.display = 'flex'; }
-function win() { falling = 0.001; playing = false; hud.textContent = 'Sniped!'; setTimeout(() => endRound('You got them!', 'Nice shot.'), 1400); }
-function lose() { flashScreen(0.9); endRound('Sniped!', 'They found you first. Stay scoped in for less time.'); }
-function flashScreen(a) { const f = document.getElementById('flash'); f.style.transition = 'none'; f.style.opacity = a;
-  requestAnimationFrame(() => { f.style.transition = 'opacity .5s'; f.style.opacity = 0; }); }
-
-startBtn.addEventListener('click', async () => {
-  if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
-    try { await DeviceOrientationEvent.requestPermission(); } catch (e) {}
-  }
-  newRound();
-});
-
-// ---------- Loop ----------
-const scopeEl = document.getElementById('scope'), dotEl = document.getElementById('dot');
-let zoom = 0, last = performance.now();
-renderer.setAnimationLoop(now => {
-  const dt = Math.min((now - last) / 1000, 0.05); last = now; const t = now / 1000;
-
-  zoom += ((scoped ? 1 : 0) - zoom) * Math.min(1, dt * 10);
-  camera.fov = THREE.MathUtils.lerp(60, 5, zoom); camera.updateProjectionMatrix();
-  scopeEl.style.opacity = dotEl.style.opacity = zoom > 0.5 ? 1 : 0;
-
-  if (breath && breathLeft > 0) breathLeft -= dt; else if (!breath) breathLeft = Math.min(3, breathLeft + dt * 0.8);
-  aim(t, zoom, breath && breathLeft > 0);
-
-  if (playing) {
-    detect += dt * (2 + (scoped ? 9 : 0));
-    expoBar.style.width = Math.min(100, detect) + '%';
-    if (detect >= 100) lose();
-
-    nextGlint -= dt;
-    if (nextGlint <= 0) { glintT = 0.35; nextGlint = 3 + Math.random() * 4; }
-    if (glintT > 0) {
-      glintT -= dt;
-      const flicker = (Math.sin(t * 60) * 0.5 + 0.5);
-      glint.material.opacity = flicker * THREE.MathUtils.lerp(0.18, 0.9, zoom);
-    } else glint.material.opacity = 0;
-  }
-
-  if (falling > 0 && falling < 1) { falling = Math.min(1, falling + dt * 1.5); enemy.rotation.z = -falling * Math.PI / 2; glint.material.opacity = 0; }
-  dust.forEach(d => { d.scale.multiplyScalar(1 + dt * 1.5); d.material.opacity -= dt * 0.8; });
-
-  renderer.render(scene, camera);
-});
-</script>
-</body>
-</html>
+let last=performance.now();
+function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;
+ zoom+=(ZOOMS[zi]-zoom)*(1-Math.exp(-dt*2.2));
+ tx=Math.max(0,Math.min(WW,tx));ty=Math.max(HZ-150,Math.min(WH-60,ty));
+ const glide=14/zoom;cx+=(tx-cx)*(1-Math.exp(-dt*glide));cy+=(ty-cy)*(1-Math.exp(-dt*glide));
+ if(playing){
+  enemy.t-=dt;if(enemy.t<=0){enemy.target=enemy.target?0:1;enemy.t=enemy.target?2+Math.random()*2:2.5+Math.random()*3}
+  enemy.peek+=(enemy.target-enemy.peek)*(1-Math.exp(-dt*4));
+  enemy.gt-=dt;if(enemy.gt<=0){enemy.glint=.15;enemy.gt=3+Math.random()*3}if(enemy.glint>0)enemy.glint-=dt;
+  exp+=dt*(zoom>1.5?.04:.012);document.getElementById('bar').style.width=Math.min(100,exp*100)+'%';
+  if(exp>=1)end(false)}
+ if(enemy.down&&enemy.fall<1.5)enemy.fall+=dt*3;
+ if(flash>0)flash-=dt;
+ draw();requestAnimationFrame(loop)}
+function setZoom(i){zi=Math.max(0,Math.min(2,i));document.getElementById('zl').textContent=ZOOMS[zi]+'x'}
+const zb=document.getElementById('zoomBtn');let zy=0;
+zb.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();zy=e.clientY});
+zb.addEventListener('pointerup',e=>{e.preventDefault();e.stopPropagation();const d=e.clientY-zy;
+ if(d<-25)setZoom(zi+1);else if(d>25)setZoom(zi-1);else setZoom(zi==2?0:zi+1)});
+document.getElementById('fireBtn').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(!playing)return;
+ flash=.08;if(hitTest(cx,cy)){enemy.down=true;playing=false;setTimeout(()=>end(true),1200)}else exp+=.18});
+let drag=null;
+cv.addEventListener('pointerdown',e=>drag={x:e.clientX,y:e.clientY});
+addEventListener('pointermove',e=>{if(!drag)return;const dx=(e.clientX-drag.x)/zoom,dy=(e.clientY-drag.y)/zoom;tx-=dx;ty-=dy;cx-=dx;cy-=dy;drag={x:e.clientX,y:e.clientY}});
+addEventListener('pointerup',()=>drag=null);
+addEventListener('keydown',e=>{if(e.code=='Space')document.getElementById('fireBtn').dispatchEvent(new PointerEvent('pointerdown'));if(e.key=='z')setZoom(zi==2?0:zi+1)});
+function onMotion(e){if(!playing||!e.rotationRate)return;
+ const ang=(screen.orientation&&screen.orientation.angle)||window.orientation||0,sg=ang==90?1:-1;
+ const dt=(e.interval>1?e.interval/1000:e.interval)||.016,k=18/zoom,dz=1.2*zoom;
+ let b=e.rotationRate.beta||0,g=e.rotationRate.gamma||0;
+ if(Math.abs(b)<dz)b=0;if(Math.abs(g)<dz)g=0;
+ tx-=sg*b*k*dt;ty+=sg*g*k*dt}
+function end(win){playing=false;document.getElementById('menu').style.display='flex';
+ document.querySelector('#menu h1').textContent=win?'Target down!':'You got sniped!';
+ document.getElementById('msg').textContent=win?'Nice shooting. Fancy another round?':'They spotted you first. Try again?';
+ document.getElementById('start').textContent='Play again'}
+document.getElementById('start').onclick=async()=>{
+ try{if(typeof DeviceMotionEvent!='undefined'&&DeviceMotionEvent.requestPermission)await DeviceMotionEvent.requestPermission()}catch(e){}
+ try{await document.documentElement.requestFullscreen();await screen.orientation.lock('landscape')}catch(e){}
+ addEventListener('devicemotion',onMotion);
+ build();exp=0;setZoom(0);cx=tx=WW/2;cy=ty=650;playing=true;document.getElementById('menu').style.display='none'};
+build();requestAnimationFrame(loop);
+</script></body></html>
